@@ -1,4 +1,4 @@
-import * as tf from "@tensorflow/tfjs";
+//import * as tf from "@tensorflow/tfjs";
 import React, { useRef, useEffect, useState } from "react";
 import * as handpose from "@tensorflow-models/handpose";
 import Webcam from "react-webcam";
@@ -11,6 +11,7 @@ function App() {
   const [history, setHistory] = useState([]);
   const DETECTION_INTERVAL = 1000;
 
+  
   useEffect(() => {
     let net;
     let intervalId;
@@ -43,48 +44,51 @@ function App() {
 
     setupModel();
 
+    const sendToBackend = async (landmarks) => {
+      try {
+        const response = await fetch("http://127.0.0.1:5000/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ landmarks }),
+        });
+  
+        const data = await response.json();
+        console.log("📡 Prediction:", data);
+  
+        if (data.prediction && data.confidence >= 0.7) {
+          setPrediction(data.prediction);
+          setConfidence((data.confidence * 100).toFixed(2));
+  
+          setHistory((prevHistory) => {
+            let updated = [...prevHistory];
+  
+            if (data.prediction === "del") {
+              if (updated.length > 0) updated.pop();
+            } else if (data.prediction === "space") {
+              const lastWord = getLastWordFromHistory(updated);
+              if (lastWord) {
+                sendToSpeechAPI(lastWord);
+                updated = []; // Clear history after speaking
+              }
+            } else if (data.prediction !== prevHistory[prevHistory.length - 1]) {
+              updated.push(data.prediction);
+            }
+  
+            return updated.slice(-10); // Keep recent history
+          });
+        }
+      } catch (err) {
+        console.error("❌ Backend error:", err);
+      }
+    };
+
     return () => {
       clearInterval(intervalId);
     };
+    
   }, []);
 
-  const sendToBackend = async (landmarks) => {
-    try {
-      const response = await fetch("http://127.0.0.1:5000/predict", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ landmarks }),
-      });
-
-      const data = await response.json();
-      console.log("📡 Prediction:", data);
-
-      if (data.prediction && data.confidence >= 0.7) {
-        setPrediction(data.prediction);
-        setConfidence((data.confidence * 100).toFixed(2));
-
-        setHistory((prevHistory) => {
-          let updated = [...prevHistory];
-
-          if (data.prediction === "del") {
-            if (updated.length > 0) updated.pop();
-          } else if (data.prediction === "space") {
-            const lastWord = getLastWordFromHistory(updated);
-            if (lastWord) {
-              sendToSpeechAPI(lastWord);
-              updated = []; // Clear history after speaking
-            }
-          } else if (data.prediction !== prevHistory[prevHistory.length - 1]) {
-            updated.push(data.prediction);
-          }
-
-          return updated.slice(-10); // Keep recent history
-        });
-      }
-    } catch (err) {
-      console.error("❌ Backend error:", err);
-    }
-  };
+  
 
   const getLastWordFromHistory = (historyArr) => {
     const word = [];
